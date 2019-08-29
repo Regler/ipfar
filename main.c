@@ -33,19 +33,52 @@ pcap_dumper_t *des_pcap_dumper_t=NULL;
 MyList *list=NULL;
 
 
+u_short mergeu_char(u_char a,u_char b)
+{
+	u_short p = 0;
+	p |= a;
+	p = p<<8;
+	p |= b;
+	return p;
+}
+
+u_short checknum(u_char *data, int length)
+{
+	
+	u_int sum =0;
+	for(int i=0; i < length ;i += 2)
+	{
+		u_short p = mergeu_char(data[i],data[i+1]);
+		printf("%x  \n", p);
+		sum += (u_int)p;
+	}
+	printf("\n");
+	printf("%x  sum \n  \n",sum);
+	u_short  d = (u_short)sum;
+	printf("%x  \n\n ", d);
+	u_short  f = (u_short)(sum>>16);
+	printf("%x   \n\n",f);
+
+	u_short s =(u_short)(d + f);
+	printf("%x   s  \n\n ",s);
+	return  s;
+}
 
 
 
 void dispatcher_handler(u_char *temp1, const struct pcap_pkthdr *header, const u_char *pkt_data)
 {
-		
-	int num_ip_fragment = (header->len - MAC_HEAD - IP_HEAD)/(mtu - IP_HEAD) + 1;
-	printf("num_ip_fragment = %d\n", num_ip_fragment);
+
+	int num_ip_fragment = (header->len - MAC_HEAD - IP_HEAD - 1 )/(mtu - IP_HEAD) + 1;
+//	printf("num_ip_fragment = %d\n", num_ip_fragment);
+	
+//	checknum(pkt_data, 20);		
 
 	const u_char *pdata =pkt_data + MAC_HEAD + IP_HEAD; 
-		
 	for(int i=1;i<=num_ip_fragment;i++)
 	{
+		
+
 		Packet *packet = (Packet *)malloc(sizeof(Packet));
 		if(i != num_ip_fragment)
 		{
@@ -56,22 +89,43 @@ void dispatcher_handler(u_char *temp1, const struct pcap_pkthdr *header, const u
 			packet->hdr->caplen =  mtu + MAC_HEAD;
 			packet->hdr->ts.tv_sec = header->ts.tv_sec;
 			packet->hdr->ts.tv_usec = header->ts.tv_usec;
-				
+
 			int j;
 			int index= 0 ;
 
 			for (j = 0; j < MAC_HEAD + IP_HEAD; j++)
 				packet->data[index++] = pkt_data[j];
 
-			u_char *fflag = packet->data + 14 + 6;
-			fflag[0]^= (1<<5);
-			u_char *flength = packet->data + 14 + 3;
-			flength[0] = (u_char) mtu;
 
-			u_char *foffset= packet->data + 14 + 7;
-			int offset = (i-1)*(mtu-IP_HEAD)/8;
-			printf("%d     offset \n", offset);
-			foffset[0] =  (u_char) offset;
+			u_char *flength = packet->data + 14 + 2;
+			u_short packet_length = (u_short) mtu;
+			flength[1] = (u_char)(packet_length);
+			flength[0] = (u_short)(packet_length>>8);
+
+			u_char *foffset= packet->data + 14 + 6;
+			u_short offset = (i-1)*(mtu-IP_HEAD)/8;
+			foffset[1] = (u_char)offset;
+			foffset[0] = (u_char)(offset>>8);
+			foffset[0]|= (0x20);
+			
+			u_char *check = packet->data + 14 + 10;
+			check[0] = 0x00;
+			check[1] = 0x00;
+			u_short finalchecknum = checknum(packet->data + 14, 20);
+			printf("%x   finanl\n",finalchecknum);
+
+			check[1]= ~((u_short)finalchecknum);
+			printf("%x   chek1\n",check[1]);
+
+			check[0] = ~((u_short)(finalchecknum>>8));
+				printf("%x   chek0\n",check[0]);
+
+			
+
+
+
+
+		
 
 			for (j = (i-1)*(mtu-IP_HEAD); j <i*(mtu - IP_HEAD); j++ )
 				packet->data[index++] = pdata[j];
@@ -87,7 +141,6 @@ void dispatcher_handler(u_char *temp1, const struct pcap_pkthdr *header, const u
 
 			packet->hdr->len = header->len - (mtu - IP_HEAD)*(num_ip_fragment - 1 );
 
-			printf ("end   length  %d  \n", packet -> hdr ->len );
 			packet->hdr->caplen =  packet->hdr->len;
 			packet->hdr->ts.tv_sec = header->ts.tv_sec;
 			packet->hdr->ts.tv_usec = header->ts.tv_usec;
@@ -98,17 +151,31 @@ void dispatcher_handler(u_char *temp1, const struct pcap_pkthdr *header, const u
 			for (j = 0; j < MAC_HEAD + IP_HEAD; j++)
 				packet->data[index++] = pkt_data[j];
 
-			u_char *fflag= packet->data + 14 + 6;
-			fflag[0]^= (0<<5);
 
-			int offset = (i-1)*(mtu-IP_HEAD)/8;	
-			printf("%d     offset \n", offset);
+			u_char *flength = packet->data + 14 + 2;
+			u_short packet_length = (u_short)(packet->hdr->len - MAC_HEAD);
+			flength[1] = (u_char)(packet_length);
+			flength[0] = (u_short)(packet_length>>8);
 
-			u_char *foffset= packet->data + 14 + 7;
-			foffset[0]=(u_char) offset;
-	
-			u_char *flength = packet->data + 14 + 3;
-			flength[0] = (u_char) packet->hdr->len - MAC_HEAD;
+			u_char *foffset= packet->data + 14 + 6;
+			u_short offset = (i-1)*(mtu-IP_HEAD)/8;
+			foffset[1] = (u_char)offset;
+			foffset[0] = (u_char)(offset>>8);
+
+			
+			u_char *check = packet->data + 14 + 10;
+			check[0] = 0x00;
+			check[1] = 0x00;
+			u_short finalchecknum = checknum(packet->data + 14, 20);
+			printf("%x   finanl\n",finalchecknum);
+
+			check[1]= ~((u_short)finalchecknum);
+			printf("%x   chek1\n",check[1]);
+
+			check[0] = ~((u_short)(finalchecknum>>8));
+				printf("%x   chek0\n",check[0]);
+
+
 
 			for (j = (num_ip_fragment - 1)*(mtu-IP_HEAD); j < header->len - MAC_HEAD - IP_HEAD; j++ )
 				packet->data[index++] = pdata[j];
@@ -174,8 +241,8 @@ void filter_pcap(char *file)
 		exit_main();		
 	}
 	struct bpf_program filter;
-	char filter_str[20];
-	snprintf(filter_str,sizeof(filter_str),"greater %d",mtu);
+	char filter_str[30];
+	snprintf(filter_str,sizeof(filter_str),"greater %d  and ip",mtu + MAC_HEAD +1);
 	if( -1==pcap_compile(source_pcap_t, &filter, filter_str, 1, 0) )
 	{
 		printf("pcap_compile() fail.\n");
@@ -200,11 +267,22 @@ void filter_pcap(char *file)
 		}
 		else
 		{
-			printf("Packet length: %d\n", packet->len);  
-			printf("Number of bytes: %d\n", packet->caplen);  
-			printf("Recieved time: %s\n", ctime((const time_t *)&packet->ts.tv_sec));
-			//读到的数据包写入生成pcap文件
-			pcap_dump((u_char*)des_pcap_dumper_t, packet, pktStr);	
+
+			const u_char *fcan_fragment = pktStr + 14 + 6;
+			u_char can_fragment =(u_char) (fcan_fragment[0]>>5);
+		//	printf("%d  \n ",can_fragment);
+			u_short twovalue = (u_short)(fcan_fragment[0]<<8) + (u_short)fcan_fragment[1]; 
+			u_short initoffset = twovalue & 0x1fff;
+		//	printf("%d  \n", initoffset);
+
+			if( can_fragment == 0 && initoffset == 0)
+			{
+				//		printf("Packet length: %d\n", packet->len);  
+				//		printf("Number of bytes: %d\n", packet->caplen);  
+				//		printf("Recieved time: %s\n", ctime((const time_t *)&packet->ts.tv_sec));
+				pcap_dump((u_char*)des_pcap_dumper_t, packet, pktStr);	//读到的数据包写入生成pcap文件
+			}
+
 		}		
 		s=pcap_next_ex(source_pcap_t, &packet, &pktStr);
 	}
@@ -234,7 +312,7 @@ void write_pcap()
 		exit_main();		
 	}
 
-	
+
 	MyNode *p = list ->first;
 	while(p)
 	{
@@ -242,7 +320,7 @@ void write_pcap()
 		pcap_dump((u_char*)pdumper, packet->hdr, packet->data);
 		p=p->next;
 	}
-	
+
 
 	pcap_dump_flush(pdumper);
 	pcap_dump_close(pdumper);
@@ -273,7 +351,7 @@ int main(int argc, char *argv[])
 		{
 			case 'm':
 				mtu=atoi(optarg);
-				printf("%d \n",mtu);
+				//	printf("%d \n",mtu);
 				break;
 			case '?':
 				printf("Unknown option: %c\n",(char)optopt);
@@ -289,6 +367,9 @@ int main(int argc, char *argv[])
 		print_pcap("gl_icmp.pcap");	
 		write_pcap();
 	}
+	if(list->length == 0) 
+	printf("所有的包都不需要分片\n");
+	else
 	printf("\n%d \n", list->length);
 	freeMyList(list,free_data);
 
