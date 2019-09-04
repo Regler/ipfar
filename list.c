@@ -1,5 +1,6 @@
 ﻿#include "list.h"
 #include <stdlib.h>
+#include <sys/types.h>  
 //创建链表
 MyList * createMyList()
 {
@@ -50,22 +51,27 @@ void myListReverse(MyList *list)
 //插入在尾部
 void myListInsertDataAtLast(MyList* const list, void* const data)
 {
+	//printf("插入尾部\n");
 	MyNode *node = (MyNode *) malloc(sizeof(MyNode));
 	if (!node) 
 	{
-		//		printf("申请内存失败\n");
+		printf("申请内存失败\n");
 		return;
 	}
 	node->data = data;
 	node->next = NULL;
+	//printf("data复制成功\n");
+	//printf("list->length=%d\n", list->length);
 	if (list->length)
 	{
+		//printf("插入不是第一个节点\n");
 		list->last->next = node;
 		node->prior=list->last;
 		list->last = node;
 	} 
 	else
 	{
+		//printf("插入为第一个节点\n");
 		node->prior = NULL;
 		list->first = node;
 		list->last = node;
@@ -130,45 +136,48 @@ void myListOutput_reverse(const MyList* const list,void(*pt)(const void* const) 
 }
 
 //删除在尾部
-void* myListRemoveDataAtLast(MyList* const list)
+void myListRemoveDataAtLast(MyList* const list)
 {
 	if (list->length == 0)  
 	{
-		//   printf("链表为NULL\n");
-		return NULL;
+		return;
 	}
 	if (list->length == 1)
 	{
-		return myListRemoveDataAtFirst(list);
+		free(list->first);
+		(list->length)--;
+		list->first = NULL;
+		list->last = NULL;
+		return;
 	}
 	MyNode *p = list->last;
-	void *value = p->data;
+	//void *value = p->data;
 	list->last = p->prior;
 	list->last->next = NULL;
 	free(p);
 	(list->length)--;
-	return value;
+	//return value;
 }
 
 //删除在首部
-void* myListRemoveDataAtFirst(MyList* const list)
+void myListRemoveDataAtFirst(MyList* const list)
 {
 	if (list->length == 0)  
 	{
 		//   printf("链表为NULL\n");
-		return NULL;
+		return;
 	}
 	MyNode *p = list->first;
 	list->first = p->next;
 	list->first->prior = NULL;
-	void * value = p->data;
+	//void * value = p->data;
 	free(p);
 	(list->length)--;
 	if (list->length == 0)
 	{
 		list->last = NULL;
 	}
-	return value;
+	//return value;
 }
 
 
@@ -225,6 +234,7 @@ int myListInsertDataAt(MyList* const list, void* const data, int index)
 }
 
 //删除
+/*
 void* myListRemoveDataAt(MyList* const list, int index)
 {
 	if (index  < 0 || index >= list->length) 
@@ -268,6 +278,7 @@ void* myListRemoveDataAt(MyList* const list, int index)
 	(list->length)--;
 	return value;
 }
+*/
 
 //取得数据
 void* myListGetDataAt(const MyList* const list, int index)
@@ -345,10 +356,6 @@ int  myListFindDataNodeindex( MyList *list ,int(*pt)( void*))
 }
 
 
-
-
-
-
 //按照某种条件查找所有节点
 MyList*  myListFindDataAllNode( MyList*  list ,int(*pt)( void*), void (*freedata)(void *))
 {
@@ -382,15 +389,6 @@ MyList*  myListFindDataAllNode( MyList*  list ,int(*pt)( void*), void (*freedata
 
 	return newList;
 }
-
-
-
-
-
-
-
-
-
 
 //快速排序  内部不给用户
 void myListQuicksort(MyNode* first, MyNode* last,int(*pt)( void*  , void* ))
@@ -494,3 +492,196 @@ void myListInsertSort(MyList *const list, int (*cmp)( void * ,  void * ))
 		now = nownext;
 	}
 }
+
+//查找id src_ip dst_ip相同的节点
+MyNode* find_info(MyList *list, u_char id1, u_char id2, int srt_ip, int dst_ip, int (*cmp_id_ip)(void *, u_char, u_char, int, int))
+{
+	MyNode *p1 = list->first;
+	do
+	{
+		//printf("ssss\n");
+		if((*cmp_id_ip)(p1->data, id1, id2, srt_ip, dst_ip) == 1)
+		{
+			return p1;	
+		}
+		else
+		{
+			p1=p1->next;
+		}
+	}
+	while(p1 != NULL);
+	return p1;
+}
+
+
+//按照偏移量顺序插入排序
+void insert_sort(MyList *list, void *data, int (*cmp_offset)(void *, void *), void (*free_data_2)(void *))
+{
+	//printf("插入前\n");
+	if(list->length == 0)
+	{
+		myListInsertDataAtLast(list, data);
+		return;
+	}	
+	else if(list->length == 1)
+	{
+		//printf("第二个节点插入前\n");
+		if((*cmp_offset)(data, list->first->data) == 2)
+		{
+			//printf("第二个节点偏移量大于第一个\n");
+			myListInsertDataAtLast(list, data); 
+			return;
+		}	
+		else if((*cmp_offset)(data, list->first->data) == 1)
+		{
+			myListInsertDataAtFirst(list, data);
+			return;
+		}
+			
+		else
+		{
+			(*free_data_2)(data);
+			return;
+		}					
+	}
+	else
+	{
+		//printf("第三个节点插入前\n");
+		MyNode *p1 = list->first;
+		MyNode *p2 = list->first->next;
+		while(p2)
+		{
+			if((*cmp_offset)(data, p1->data) == 1)//小于p1
+			{
+				if(p1 == list->first)//p1是头
+				{
+					myListInsertDataAtFirst(list, data);
+					return;
+				}	
+				else//p1不是头
+				{
+					MyNode *node = (MyNode *) malloc(sizeof(MyNode));
+					if (node == NULL) 
+					{
+						perror("malloc node");
+						return;
+					}
+					node->data = data;
+					node->next = p1;
+					node->prior = p1->prior;
+					p1->prior->next = node;
+					p1->prior = node;
+					(list->length)++;
+					return;
+				}
+			}				
+			else if((*cmp_offset)(data, p2->data) == 2)	//大于p2
+			{
+				//printf("第3个节点偏移量大于第2个\n");
+				if(p2 == list->last)//p2是尾节点
+				{
+					myListInsertDataAtLast(list, data);
+					return;
+				}
+				else if((*cmp_offset)(data, p2->next->data) == 1)
+				{
+					MyNode *node = (MyNode *) malloc(sizeof(MyNode));
+					if (node == NULL) 
+					{
+						perror("malloc node");
+						return;
+					}
+					node->data = data;
+					printf("第3个节点数据赋值成功\n");
+					node->next = p2->next;
+					
+					node->next->prior = node;
+					node->prior = p2;
+					p2->next = node;
+					(list->length)++;
+					return;
+				}
+				else
+				{
+					p1 = p1->next;
+					p2 = p2->next;
+				}
+			}
+			else if((*cmp_offset)(data, p1->data) == 2 && (*cmp_offset)(data, p2->data) == 1)//p1,p2之间
+			{
+				MyNode *node = (MyNode *) malloc(sizeof(MyNode));
+				if (node == NULL) 
+				{
+					perror("malloc node");
+					return;
+				}
+				node->data = data;
+				node->next = p2;
+				p2->prior = node;
+				node->prior = p1;
+				p1->next = node;
+				(list->length)++;
+				return ;
+			}
+			else//等于p1或者p2
+			{
+				(*free_data_2)(data);
+				return;
+			}
+			
+		}
+	}	
+}
+
+void delete_node(MyList *list, MyNode *p, void (*free_data_1)(void *))
+{
+
+	if(list->length == 0)
+	{
+		return;
+	}	
+	else if(list->length == 1)
+	{
+	
+
+		myListRemoveDataAtLast(list);
+		return;
+	}
+	else
+	{
+	
+		MyNode *p1 = list->first;
+		while(p1)
+		{
+			if(p == p1)
+			{
+				if(p1 == list->first)
+				{
+					myListRemoveDataAtFirst(list);
+					return;
+				}
+				else if(p1 == list->last)
+				{
+					myListRemoveDataAtLast(list);
+					return;
+				}
+				else
+				{
+					p1->prior->next = p1->next;
+					p1->next->prior = p1->prior;
+					(*free_data_1)(p1->data);
+					free(p1);
+					p1 = NULL;
+					(list->length)--;
+				}
+			}
+			else
+			{
+				p1 = p1->next;
+			}
+		}
+	}
+}
+
+
+

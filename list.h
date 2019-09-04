@@ -1,7 +1,7 @@
 #ifndef LIST_H_INCLUDED
 #define LIST_H_INCLUDED
 #include <stdio.h>
-
+#include <sys/types.h>  
 
 typedef struct myNode
 {
@@ -37,13 +37,13 @@ void myListInsertDataAtFirst(MyList * const list, void* const data);
 int myListInsertDataAt(MyList * const list, void* const data, int index);
 
 //删除在尾部
-void* myListRemoveDataAtLast(MyList* const list);
+void myListRemoveDataAtLast(MyList* const list);
 
 //删除在首部
-void* myListRemoveDataAtFirst(MyList * const list);
+void myListRemoveDataAtFirst(MyList * const list);
 
 //删除
-void* myListRemoveDataAt(MyList* const list, int index);
+//void* myListRemoveDataAt(MyList* const list, int index);
 
 //删除对象,返回是否删除成功
 int myListRemoveDataObject(MyList* const list, void * data);
@@ -80,4 +80,12 @@ void  myListQuickSort(MyList * const list,int(*pt)( void *  , void * ));
 
 void myListInsertSort(MyList *const list, int (*cmp)( void * ,  void * ));
 
+
+
+//查找id src_ip dst_ip相同的节点
+MyNode* find_info(MyList *list, u_char id1, u_char id2, int a, int b, int (*cmp_id)(void *, u_char, u_char, int, int));
+//按照偏移量顺序插入排序
+void insert_sort(MyList *list, void *data, int (*cmp_offset)(void *, void *), void (*free_data_2)(void *));
+//按照节点指向的指针删除节点
+void delete_node(MyList *list, MyNode *p, void (*free_data_1)(void *));
 #endif // LIST_H_INCLUDED
