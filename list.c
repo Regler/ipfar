@@ -235,50 +235,50 @@ int myListInsertDataAt(MyList* const list, void* const data, int index)
 
 //删除
 /*
-void* myListRemoveDataAt(MyList* const list, int index)
-{
-	if (index  < 0 || index >= list->length) 
-	{
-		//   printf("删除范围错误\n");
-		return NULL;
-	}
-	if (index == 0)
-	{
-		return myListRemoveDataAtFirst(list);
-	}
-	if (index == list->length - 1)
-	{
-		return myListRemoveDataAtLast(list);
-	}
-	int mid = list->length/2;
-	MyNode *p = NULL;
-	MyNode *temp = NULL;
-	if (index < mid)
-	{
-		p = list->first;
-		for (int i=1; i < index; i++)
-		{ 
-			p=p->next;
-		}
-
-	}
-	else 
-	{
-		p = list->last;
-		for( int i = list->length; i > index; i--)
-		{   
-			p=p->prior;
-		}
-	}
-	temp = p->next;
-	void *value = temp->data;
-	p->next = temp->next;
-	temp->next->prior = p;
-	free(temp);
-	(list->length)--;
-	return value;
+   void* myListRemoveDataAt(MyList* const list, int index)
+   {
+   if (index  < 0 || index >= list->length) 
+   {
+//   printf("删除范围错误\n");
+return NULL;
 }
-*/
+if (index == 0)
+{
+return myListRemoveDataAtFirst(list);
+}
+if (index == list->length - 1)
+{
+return myListRemoveDataAtLast(list);
+}
+int mid = list->length/2;
+MyNode *p = NULL;
+MyNode *temp = NULL;
+if (index < mid)
+{
+p = list->first;
+for (int i=1; i < index; i++)
+{ 
+p=p->next;
+}
+
+}
+else 
+{
+p = list->last;
+for( int i = list->length; i > index; i--)
+{   
+p=p->prior;
+}
+}
+temp = p->next;
+void *value = temp->data;
+p->next = temp->next;
+temp->next->prior = p;
+free(temp);
+(list->length)--;
+return value;
+}
+ */
 
 //取得数据
 void* myListGetDataAt(const MyList* const list, int index)
@@ -537,7 +537,7 @@ void insert_sort(MyList *list, void *data, int (*cmp_offset)(void *, void *), vo
 			myListInsertDataAtFirst(list, data);
 			return;
 		}
-			
+
 		else
 		{
 			(*free_data_2)(data);
@@ -594,7 +594,7 @@ void insert_sort(MyList *list, void *data, int (*cmp_offset)(void *, void *), vo
 					node->data = data;
 					printf("第3个节点数据赋值成功\n");
 					node->next = p2->next;
-					
+
 					node->next->prior = node;
 					node->prior = p2;
 					p2->next = node;
@@ -628,10 +628,62 @@ void insert_sort(MyList *list, void *data, int (*cmp_offset)(void *, void *), vo
 				(*free_data_2)(data);
 				return;
 			}
-			
+
 		}
 	}	
 }
+/*
+   void delete_node(MyList *list, MyNode *p, void (*free_data_1)(void *))
+   {
+
+   if(list->length == 0)
+   {
+   return;
+   }	
+   else if(list->length == 1)
+   {
+
+
+   myListRemoveDataAtLast(list);
+   return;
+   }
+   else
+   {
+
+   MyNode *p1 = list->first;
+   while(p1)
+   {
+   if(p == p1)
+   {
+   if(p1 == list->first)
+   {
+   myListRemoveDataAtFirst(list);
+   return;
+   }
+   else if(p1 == list->last)
+   {
+   myListRemoveDataAtLast(list);
+   return;
+   }
+   else
+   {
+   p1->prior->next = p1->next;
+   p1->next->prior = p1->prior;
+   (*free_data_1)(p1->data);
+   free(p1);
+   p1 = NULL;
+   (list->length)--;
+   }
+   }
+   else
+   {
+   p1 = p1->next;
+   }
+   }
+   }
+   }
+ */
+
 
 void delete_node(MyList *list, MyNode *p, void (*free_data_1)(void *))
 {
@@ -639,17 +691,18 @@ void delete_node(MyList *list, MyNode *p, void (*free_data_1)(void *))
 	if(list->length == 0)
 	{
 		return;
-	}	
+	} 
 	else if(list->length == 1)
 	{
-	
-
-		myListRemoveDataAtLast(list);
+		(*free_data_1)(list->first->data);
+		free(list->first);
+		list->first = NULL;
+		list->last = NULL;
+		(list->length)--;
 		return;
 	}
 	else
 	{
-	
 		MyNode *p1 = list->first;
 		while(p1)
 		{
@@ -657,12 +710,20 @@ void delete_node(MyList *list, MyNode *p, void (*free_data_1)(void *))
 			{
 				if(p1 == list->first)
 				{
-					myListRemoveDataAtFirst(list);
+					list->first = p1->next;
+					list->first->prior = NULL;
+					(*free_data_1)(p1->data);
+					free(p1);
+					(list->length)--;
 					return;
 				}
 				else if(p1 == list->last)
 				{
-					myListRemoveDataAtLast(list);
+					list->last = p1->prior;
+					p1->prior->next = NULL;
+					(*free_data_1)(p1->data);
+					free(p1);
+					(list->length)--;
 					return;
 				}
 				else
@@ -673,6 +734,7 @@ void delete_node(MyList *list, MyNode *p, void (*free_data_1)(void *))
 					free(p1);
 					p1 = NULL;
 					(list->length)--;
+					return;
 				}
 			}
 			else
@@ -682,6 +744,3 @@ void delete_node(MyList *list, MyNode *p, void (*free_data_1)(void *))
 		}
 	}
 }
-
-
-

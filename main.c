@@ -18,6 +18,14 @@
 #include <netinet/ip.h>
 #include "list.h"
 #include <endian.h>
+
+#include <stdlib.h>
+#include <unistd.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <string.h>
+#include <net/if.h>
+#include <sys/ioctl.h>
 #define LINE_LEN 16
 #define IP_HEAD 20
 #define MAC_HEAD 14
@@ -26,6 +34,7 @@
 #define IDENTIFICATION_1 18
 #define IDENTIFICATION_2 19
 
+int is_autogetpacke = 0;
 int mtu = 1500;
 int fragment_length = 0;      //分片之后长度
 int fragment_filter_length = 0;
@@ -36,6 +45,8 @@ pcap_t *source_pcap_fragment=NULL;
 pcap_dumper_t *pdumper_fragment = NULL;
 pcap_dumper_t *pdumper_reassembled = NULL;
 pcap_t *source_pcap_reassembled = NULL;
+int fragment_filter_packet = 0;
+int auto_get_packet_size = 500;
 
 
 
@@ -145,24 +156,44 @@ int get_pcap_length(char *filename)
 
 void dispatcher_handler(u_char *temp1, const struct pcap_pkthdr *header, const u_char *pkt_data)
 {
+	if(is_autogetpacke == 1)
+	{
+		printf("get a packet with length of [%d]\n",header->len);
+		if( header->len <= (mtu + MAC_HEAD) )
+		{
+			fragment_filter_packet++;
 
-	/*
-	   int fiter_length = mtu + MAC_HEAD  ;
-	   if(header->len <= fiter_length )
-	   return ;	
-	   const u_char *fcan_fragment = pkt_data + 14 + 6;
-	   u_char can_fragment =(u_char) (fcan_fragment[0]>>5);
-	   u_short twovalue = (u_short)(fcan_fragment[0]<<8) + (u_short)fcan_fragment[1]; 
-	   u_short initoffset = twovalue & 0x1fff;
-	   if(!( can_fragment == 0 && initoffset == 0))
-	   {
-	   return ;
-	   }
+			return ;
+		}
+	
+		const u_char *ip_head_data = pkt_data + MAC_HEAD;
+		struct ip *ip_head_s = (struct ip *)ip_head_data;
+		u_short ip_off;
+		if (__BYTE_ORDER == __LITTLE_ENDIAN)
+		{
+			ip_off =htons(ip_head_s->ip_off);
+		}
+		else
+		{
+			ip_off = ip_head_s->ip_off;
+		}
+		u_short can_fragment = ip_off & IP_DF;
+		u_short more_fragment = ip_off & IP_MF;
+		u_short initoffset = ip_off & IP_OFFMASK;
+		unsigned int ip_v = ip_head_s->ip_v;
+		
 
 
-	   fragment_filter_length++;
-	 */
+		if(!((can_fragment == 0) 
+					&& (initoffset == 0)
+					&& (more_fragment == 0)  
+					&& (ip_v == 4)))
+		{
+			fragment_filter_packet++;
+			return ;
+		}
 
+	}
 
 	if((mtu - IP_HEAD)%8 != 0)
 		mtu = mtu - (mtu - IP_HEAD)%8;
@@ -243,7 +274,7 @@ void dispatcher_handler(u_char *temp1, const struct pcap_pkthdr *header, const u
 			u_char *ip_head_data = packet->data + MAC_HEAD;
 			struct ip *ip_head_s = (struct ip *)ip_head_data;
 			u_short packet_length = (u_short)mtu;
-			u_short offset = (i-1)*(mtu-IP_HEAD)/8;
+			u_short offset = (i-1)*(mtu-IP_HEAD)>>3;
 			offset = offset | 0x2000 ;
 
 			if (__BYTE_ORDER == __LITTLE_ENDIAN)
@@ -271,7 +302,6 @@ void dispatcher_handler(u_char *temp1, const struct pcap_pkthdr *header, const u
 
 			write_packet(pdumper_fragment,packet);
 			free_data(packet);	
-			//	myListInsertDataAtLast(list, packet); 
 		}
 
 		else 
@@ -330,7 +360,7 @@ void dispatcher_handler(u_char *temp1, const struct pcap_pkthdr *header, const u
 			u_char *ip_head_data = packet->data + MAC_HEAD;
 			struct ip *ip_head_s = (struct ip *)ip_head_data;
 			u_short packet_length = (u_short)(packet->hdr->len - MAC_HEAD);
-			u_short offset = (i-1)*(mtu-IP_HEAD)/8;
+			u_short offset = (i-1)*(mtu-IP_HEAD)>>3;
 
 			if (__BYTE_ORDER == __LITTLE_ENDIAN)
 			{
@@ -358,8 +388,6 @@ void dispatcher_handler(u_char *temp1, const struct pcap_pkthdr *header, const u
 			write_packet(pdumper_fragment,packet);	
 			free_data(packet);	
 
-			//	myListInsertDataAtLast(list, packet); 
-
 		}
 	}
 
@@ -385,48 +413,6 @@ void print_pcap(char *file)
 
 
 
-
-/*
-   void packet_to_node(u_char *temp1, const struct pcap_pkthdr *header, const u_char *pkt_data)
-   {
-
-   Packet *packet = (Packet *)malloc(sizeof(Packet));
-
-   packet->data = (u_char *) malloc (sizeof(u_char) *(header->len) + 1);
-   packet->hdr = (struct pcap_pkthdr *)malloc(sizeof(struct pcap_pkthdr));
-
-   packet->hdr->len = header->len;
-   packet->hdr->caplen = header->caplen ;
-   packet->hdr->ts.tv_sec = header->ts.tv_sec;
-   packet->hdr->ts.tv_usec = header->ts.tv_usec;
-   int j;
-   for (j = 0; j < header->len; j++)
-   packet->data[j] = pkt_data[j];
-   packet->data[j]='\0';
-
-   myListInsertDataAtLast(list, packet); 
-
-   }
- */
-
-/*
-   void pcap_to_list(char *file)
-   {
-
-   char errbuf[PCAP_ERRBUF_SIZE];
-//打开pcap文件
-if ((file_fragment = pcap_open_offline(file,	   // name of the device
-errbuf					                    // error buffer
-)) == NULL)
-{
-fprintf(stderr,"\nUnable to open the file %s.\n", file);
-return ;
-}
-pcap_loop(file_fragment, 0, packet_to_node, NULL);
-pcap_close(file_fragment);
-
-}
- */
 
 
 
@@ -456,49 +442,34 @@ void filter_pcap(char *file)
 
 	}
 
-	printf("过滤前还有%d包\n",get_pcap_length(file));
+	//	printf("过滤前还有%d包\n",get_pcap_length(file));
+	
 
 
 
-
-	struct bpf_program filter;
-	char filter_str[30];
-	snprintf(filter_str,sizeof(filter_str),"greater %d  and ip",mtu + MAC_HEAD );
-	if( -1==pcap_compile(source_pcap_filter, &filter, filter_str, 1, 0) )
-	{
+	/*	struct bpf_program filter;
+		char filter_str[30];
+		snprintf(filter_str,sizeof(filter_str),"greater %d  and ip",mtu + MAC_HEAD );
+		if( -1==pcap_compile(source_pcap_filter, &filter, filter_str, 1, 0) )
+		{
 		printf("pcap_compile() fail.\n");
 		printf("errno:%s\n", pcap_geterr(source_pcap_filter));
-		if( NULL!=source_pcap_filter )
-		{
-			pcap_close(source_pcap_filter);
-		}
-		if( NULL!=pdumper_filter )
-		{
-			pcap_dump_close(pdumper_filter);
-		}
 		return ;
 
 
-	}
-	if( -1==pcap_setfilter(source_pcap_filter, &filter) )
-	{
+		}
+		if( -1==pcap_setfilter(source_pcap_filter, &filter) )
+		{
 		printf("pcap_setfilter() fail.\n");
-		if( NULL!=source_pcap_filter )
-		{
-			pcap_close(source_pcap_filter);
-		}
-		if( NULL!=pdumper_filter )
-		{
-			pcap_dump_close(pdumper_filter);
-		}
+		pcap_close(source_pcap_filter);
 		return ;
 
-	}
+		}
+	 */
 
 
 
-
-
+	int before_filter = 0;
 	struct pcap_pkthdr *packet;
 	const u_char *pktStr;
 	int s=pcap_next_ex(source_pcap_filter, &packet, &pktStr);
@@ -513,12 +484,36 @@ void filter_pcap(char *file)
 		else
 		{
 
-			const u_char *fcan_fragment = pktStr + 14 + 6;
-			u_char can_fragment =(u_char) (fcan_fragment[0]>>5);
-			u_short twovalue = (u_short)(fcan_fragment[0]<<8) + (u_short)fcan_fragment[1]; 
-			u_short initoffset = twovalue & 0x1fff;
+			before_filter++;
+			const u_char *ip_head_data = pktStr + MAC_HEAD;
+			struct ip *ip_head_s = (struct ip *)ip_head_data;
+			u_short ip_off;
+			if (__BYTE_ORDER == __LITTLE_ENDIAN)
+			{
+				ip_off =htons(ip_head_s->ip_off);
+			}
+			else
+			{
+				ip_off = ip_head_s->ip_off;
+			}
+			u_short can_fragment = ip_off & IP_DF;
+			u_short more_fragment = ip_off & IP_MF;
+			u_short initoffset = ip_off & IP_OFFMASK;
+			unsigned int ip_v = ip_head_s->ip_v;
 
-			if( can_fragment == 0 && initoffset == 0)
+			/*
+			   const u_char *fcan_fragment = pktStr + 14 + 6;
+			   u_char can_fragment =(u_char) (fcan_fragment[0]>>5);
+			   u_short twovalue = (u_short)(fcan_fragment[0]<<8) + (u_short)fcan_fragment[1]; 
+			   u_short initoffset = twovalue & 0x1fff;
+			 */
+
+
+			if((can_fragment == 0) 
+					&& (initoffset == 0)
+					&& (more_fragment == 0) 
+					&& (packet->len > (mtu + MAC_HEAD)) 
+					&& (ip_v == 4))
 			{
 				pcap_dump((u_char*)pdumper_filter, packet, pktStr);	//读到的数据包写入生成pcap文件
 				gllength++;
@@ -527,7 +522,8 @@ void filter_pcap(char *file)
 		}		
 		s=pcap_next_ex(source_pcap_filter, &packet, &pktStr);
 	}
-
+	
+	printf("过滤前还有%d包\n",before_filter);
 	printf("过滤后还有%d包\n",gllength);
 
 
@@ -544,21 +540,6 @@ void filter_pcap(char *file)
 
 
 
-/*
-   void write_pcap( pcap_dumper_t *pdumper)
-   {
-
-   MyNode *p = list ->first;
-   while(p)
-   {
-   Packet *packet = (Packet *)p->data;
-   pcap_dump((u_char*)pdumper, packet->hdr, packet->data);
-   p=p->next;
-   }
-   }
- */
-
-
 
 
 
@@ -571,7 +552,7 @@ void packet_handler(u_char *user, const struct pcap_pkthdr *pkt_header, const u_
 	printf("get a packet with length of [%d]\n", pkt_header->len);// 打印抓到的包的长度
 }
 
-void autogetpacket(int length)
+void autogetpacket(char *Netport,char *writefile)
 {
 
 	pcap_t *handle;                 // 会话句柄 
@@ -581,30 +562,51 @@ void autogetpacket(int length)
 	bpf_u_int32 mask;               //所在网络的掩码 
 	bpf_u_int32 net;                // 主机的IP地址 
 
-	struct bpf_program filter;      //已经编译好的过滤器
-	char filter_app[] = "ip";  //BPF过滤规则,和tcpdump使用的是同一种过滤规则
+	//	struct bpf_program filter;      //已经编译好的过滤器
+	//	char filter_app[] = "ip";  //BPF过滤规则,和tcpdump使用的是同一种过滤规则
 
 	/* 探查设备及属性 */
-	char *dev;                      //指定需要被抓包的设备 我们在linux下的两个设备eth0和lo分别是网卡和本地环回
-	dev = pcap_lookupdev(errbuf);   //返回第一个合法的设备，我这里是eth0
+	char *dev = Netport;                      //指定需要被抓包的设备 我们在linux下的两个设备eth0和lo分别是网卡和本地环回
+	//	dev = pcap_lookupdev(errbuf);   //返回第一个合法的设备，我这里是eth0
 	pcap_lookupnet(dev, &net, &mask, errbuf);
-	printf("dev =  %s\n",dev);
-	//dev = "lo";                   //如果需要抓取本地的数据包，比如过滤表达式为host localhost的时候可以直接指定
 
 	/* 以混杂模式打开会话 */
 	handle = pcap_open_live(dev, BUFSIZ, 1, 0, errbuf);
 
 	/* 编译并应用过滤器 */
-	pcap_compile(handle, &filter, filter_app, 0, net);
-	pcap_setfilter(handle, &filter);
+	//	pcap_compile(handle, &filter, filter_app, 0, net);
+	//	pcap_setfilter(handle, &filter);
 
 	/* 定义输出文件 */
 	pcap_dumper_t* out_pcap;
+
+
 	out_pcap  = pcap_dump_open(handle,"./autogetpacket.pcap");
 
 
-	/* 截获30个包 */
-	pcap_loop(handle,length,packet_handler,(u_char *)out_pcap);
+	/* 截获length个包 */
+	//pcap_loop(handle,500,packet_handler,(u_char *)out_pcap);
+
+	//打开保存的pcap文件	
+	if( NULL==(pdumper_fragment=pcap_dump_open(handle,writefile)) )
+	{
+		printf("pcap_dump_open() fail.\n");
+		pcap_close(source_pcap_fragment);
+		return ;
+	}
+	pcap_loop(handle,auto_get_packet_size,dispatcher_handler,(u_char *)out_pcap);
+
+
+
+
+
+
+	printf("\n自动抓取%d个包\n",auto_get_packet_size);
+	printf("过滤后还有%d个包\n", auto_get_packet_size-fragment_filter_packet);
+	printf("分片之后有%d包\n",fragment_length);
+
+
+
 
 
 	/* 刷新缓冲区 */
@@ -613,6 +615,9 @@ void autogetpacket(int length)
 	/* 关闭资源 */
 	pcap_close(handle);
 	pcap_dump_close(out_pcap);
+	pcap_dump_flush(pdumper_fragment);
+	pcap_dump_close(pdumper_fragment);
+//	pcap_close(source_pcap_fragment);
 
 
 }
@@ -666,12 +671,27 @@ int packet_len(MyList *list)
 
 void reassembled_packet(MyList *list)
 {
-	Packet *final_packet = (Packet *)malloc(sizeof(Packet));
-
+	Packet *final_packet = NULL;
+	final_packet =	(Packet *)malloc(sizeof(Packet));
+	if(final_packet == NULL)
+		return ;
 	int final_len = packet_len(list);
 
+	final_packet->data = NULL;
 	final_packet->data = (u_char *) malloc (sizeof(u_char)*(final_len + 1));
+	if(final_packet->data == NULL)
+	{
+		free(final_packet);
+		return ;
+	}
+	final_packet->hdr = NULL;
 	final_packet->hdr = (struct pcap_pkthdr *)malloc(sizeof(struct pcap_pkthdr));
+	if(final_packet->hdr == NULL)
+	{
+		free(final_packet->data);
+		free(final_packet);
+		return ;
+	}
 
 	MyNode * p = list->first;
 
@@ -687,21 +707,43 @@ void reassembled_packet(MyList *list)
 	for (j = 0; j < MAC_HEAD + IP_HEAD; j++)
 		final_packet->data[index++] = ((Packet_reassembled *)p->data)->packet_head_data->data[j];
 
-	u_char *flength = final_packet->data + 14 + 2;
+	/*
+	   u_char *flength = final_packet->data + 14 + 2;
+	   u_short packet_length = (u_short)(final_len - MAC_HEAD) ; 
+	   flength[1] = (u_char)(packet_length);
+	   flength[0] = (u_short)(packet_length>>8);
+
+	   u_char *foffset= final_packet->data + 14 + 6;
+	   foffset[0] = 0x00;
+	   foffset[1] = 0x00;
+
+	   u_char *check = final_packet->data + 14 + 10;
+	   check[0] = 0x00;
+	   check[1] = 0x00;
+	   u_short finalchecknum = checknum(final_packet->data + 14, 20);
+	   check[1]= ~((u_short)finalchecknum);
+	   check[0] = ~((u_short)(finalchecknum>>8));
+	 */
+
+	u_char *ip_head_data = final_packet->data + MAC_HEAD;
+	struct ip *ip_head_s = (struct ip *)ip_head_data;
+	ip_head_s->ip_off = 0x0000;
 	u_short packet_length = (u_short)(final_len - MAC_HEAD) ; 
-	flength[1] = (u_char)(packet_length);
-	flength[0] = (u_short)(packet_length>>8);
 
-	u_char *foffset= final_packet->data + 14 + 6;
-	foffset[0] = 0x00;
-	foffset[1] = 0x00;
-
-	u_char *check = final_packet->data + 14 + 10;
-	check[0] = 0x00;
-	check[1] = 0x00;
-	u_short finalchecknum = checknum(final_packet->data + 14, 20);
-	check[1]= ~((u_short)finalchecknum);
-	check[0] = ~((u_short)(finalchecknum>>8));
+	if (__BYTE_ORDER == __LITTLE_ENDIAN)
+	{
+		ip_head_s->ip_len = htons(packet_length);
+		ip_head_s->ip_sum = 0x0000;
+		u_short finalchecknum = checknum(ip_head_data, 20);
+		ip_head_s->ip_sum = htons(finalchecknum);
+	}
+	else
+	{
+		ip_head_s->ip_len = packet_length;
+		ip_head_s->ip_sum = 0x0000;
+		u_short finalchecknum = checknum(ip_head_data, 20);
+		ip_head_s->ip_sum = finalchecknum;
+	}
 
 
 
@@ -808,12 +850,15 @@ int if_near_fragent(void * p1, void * p2)
 		return 0;
 }
 
+
+
+
 void free_data_2(void *data)
 {
 	Packet_reassembled * pp = (Packet_reassembled *)data;
-	free(pp->packet_head_data->hdr);
-	free(pp->packet_head_data->data);
-	free(pp->packet_head_data);
+	free(pp->packet_head_data->hdr); free(pp->packet_head_data->data);//释放内层链表每个节点数据中data申请的空间
+	free(pp->packet_head_data);//释放内层链表每个节点数据中packet_head_data申请的空间
+	free(pp);//释放内层链表每个节点数据申请的空间
 }
 
 void free_data_1(void *data)
@@ -824,12 +869,18 @@ void free_data_1(void *data)
 	while (pp->list_packet->first)
 	{
 		s = pp->list_packet->first->next;
-		free_data_2(pp->list_packet->first->data);
-		free(pp->list_packet->first);
+		free_data_2(pp->list_packet->first->data);//释放内层链表每个节点数据申请的空间
+		free(pp->list_packet->first);//释放内层链表每个节点申请的空间
 		pp->list_packet->first = s;
 	}
-	free(pp->list_packet);
+	free(pp->list_packet);//释放内层链表
+	free(pp);//释放内层链表作为外层链表节点的数据申请的空间
 }
+
+
+
+
+
 
 
 
@@ -837,6 +888,9 @@ void free_data_1(void *data)
 
 void copy_id_info(const struct pcap_pkthdr *header, const u_char *pkt_data)
 {
+	if(((pkt_data[FLAGS1_1]>>5) & 1) == 0 && two_char_to_int(pkt_data[FLAGS1_1], pkt_data[FLAGS1_2]) == 0)
+		return;
+
 	All_fragment *all_fragment = (All_fragment *)malloc(sizeof(All_fragment));
 	if(all_fragment == NULL)
 	{
@@ -849,6 +903,7 @@ void copy_id_info(const struct pcap_pkthdr *header, const u_char *pkt_data)
 	Packet_reassembled *packet_reassembled = (Packet_reassembled *)malloc(sizeof(Packet_reassembled));
 	if(packet_reassembled == NULL)
 	{
+		free(all_fragment);
 		perror("malloc packet_reassembled");
 		return;
 	}
@@ -856,6 +911,8 @@ void copy_id_info(const struct pcap_pkthdr *header, const u_char *pkt_data)
 	packet_reassembled->packet_head_data = (Packet *)malloc(sizeof(Packet));
 	if(packet_reassembled->packet_head_data == NULL)
 	{
+		free(packet_reassembled);
+		free(all_fragment);
 		perror("malloc packet_reassembled->packet_head_data");
 		return;
 	}
@@ -863,6 +920,9 @@ void copy_id_info(const struct pcap_pkthdr *header, const u_char *pkt_data)
 	packet_reassembled->packet_head_data->hdr = (struct pcap_pkthdr *)malloc(sizeof(struct pcap_pkthdr));
 	if(packet_reassembled->packet_head_data->hdr == NULL)
 	{
+		free(packet_reassembled->packet_head_data);
+		free(packet_reassembled);
+		free(all_fragment);
 		perror("malloc packet_reassembled->packet_head_data->hdr");
 		return;
 	}
@@ -870,6 +930,10 @@ void copy_id_info(const struct pcap_pkthdr *header, const u_char *pkt_data)
 	packet_reassembled->packet_head_data->data = (u_char *)malloc(sizeof(u_char)*(header->len));
 	if(packet_reassembled->packet_head_data->data == NULL)
 	{
+		free(packet_reassembled->packet_head_data->hdr);
+		free(packet_reassembled->packet_head_data);
+		free(packet_reassembled);
+		free(all_fragment);
 		perror("malloc packet_reassembled->packet_head_data->data");
 		return;
 	}
@@ -898,10 +962,7 @@ void copy_id_info(const struct pcap_pkthdr *header, const u_char *pkt_data)
 	packet_reassembled->offset = two_char_to_int(pkt_data[FLAGS1_1], pkt_data[FLAGS1_2]);
 	//插入id链表
 
-	if(((pkt_data[FLAGS1_1]>>5) & 1) == 0 && two_char_to_int(pkt_data[FLAGS1_1], pkt_data[FLAGS1_2]) == 0)
-		return;
-	else
-		myListInsertDataAtLast(list_reassembled, all_fragment);
+	myListInsertDataAtLast(list_reassembled, all_fragment);
 
 
 	//插入分片链表
@@ -921,6 +982,7 @@ void copy_packet_info(MyList *list, const struct pcap_pkthdr *header, const u_ch
 	packet_reassembled->packet_head_data = (Packet *)malloc(sizeof(Packet));
 	if(packet_reassembled->packet_head_data == NULL)
 	{
+		free(packet_reassembled);
 		perror("malloc packet_reassembled->packet_head_data");
 		return;
 	}
@@ -928,6 +990,8 @@ void copy_packet_info(MyList *list, const struct pcap_pkthdr *header, const u_ch
 	packet_reassembled->packet_head_data->hdr = (struct pcap_pkthdr *)malloc(sizeof(struct pcap_pkthdr));
 	if(packet_reassembled->packet_head_data->hdr == NULL)
 	{
+		free(packet_reassembled->packet_head_data);
+		free(packet_reassembled);
 		perror("malloc packet_reassembled->packet_head_data->hdr ");
 		return;
 	}
@@ -935,6 +999,9 @@ void copy_packet_info(MyList *list, const struct pcap_pkthdr *header, const u_ch
 	packet_reassembled->packet_head_data->data = (u_char *)malloc(sizeof(u_char)*(header->len));
 	if(packet_reassembled->packet_head_data->data == NULL)
 	{
+		free(packet_reassembled->packet_head_data->hdr);
+		free(packet_reassembled->packet_head_data);
+		free(packet_reassembled);
 		perror("malloc packet_reassembled->packet_head_data->data");
 		return;
 	}
@@ -955,6 +1022,7 @@ void copy_packet_info(MyList *list, const struct pcap_pkthdr *header, const u_ch
 
 	insert_sort(list, packet_reassembled, cmp_offset, free_data_2);//插入排序
 }
+
 
 //判断是否分片包到齐
 int judge_collected_fragments(MyList *list)
@@ -1059,7 +1127,7 @@ void reassembled(char *czfilename)
 	list_reassembled = createMyList();
 	if_reassembled(czfilename);//能否重组
 
-	printf("有%d个包不需要重组\n",list_reassembled->length);	
+	printf("有%d个包不能重组\n",list_reassembled->length);	
 	printf("重组之后有%d包\n",reassemble_length);
 
 
@@ -1071,24 +1139,57 @@ void reassembled(char *czfilename)
 
 }
 
+int junge_networkcard(char *str)
+{
+
+
+	int i=0;
+	int sockfd;
+	struct ifconf ifc;
+	char buf[512];
+	struct ifreq *ifr;
+	//初始化ifconf
+	ifc.ifc_len = 512;
+	ifc.ifc_buf = buf;
+
+	if((sockfd = socket(AF_INET, SOCK_DGRAM, 0))<0)
+	{
+		perror("socket");
+	}  
+	ioctl(sockfd, SIOCGIFCONF, &ifc);    //获取所有接口信息
+
+	//接下来获取逐个网卡的名称
+	ifr = (struct ifreq*)buf;  
+	for(i=(ifc.ifc_len/sizeof(struct ifreq)); i>0; i--)
+	{
+		//	printf("name = [%s]\n", ifr->ifr_name);
+		if(strcmp(ifr->ifr_name,str) == 0)
+			return 1;
+		ifr++;
+	}
+	return 0;
+}
 int main(int argc, char *argv[])
 {
 	int opt;
-	int is_autogetpacke = 0;
 	int is_foc = 0;
 	char *writefile = "final.pcap";
-	int autoget_packet_length = 500;
-	while ((opt = getopt(argc, argv, "m:a:cw:")) != -1)
+	char *network = NULL;
+
+	while ((opt = getopt(argc, argv, "m:a:cw:s:")) != -1)
 	{
 		switch (opt) 
 		{
 			case 'm':
 				mtu=atoi(optarg);
-				//	printf("%d \n",mtu);
 				break;
 			case 'a':
-				autoget_packet_length = atoi(optarg);
-				autogetpacket(autoget_packet_length);
+				if(junge_networkcard(optarg) == 0)
+				{
+					printf("%s 不是网卡\n",optarg);
+					return 1;
+				}
+				network = optarg;
 				is_autogetpacke = 1;
 				break;
 			case 'c':
@@ -1097,8 +1198,14 @@ int main(int argc, char *argv[])
 			case 'w':
 				writefile = optarg;
 				break;
+			case 's':
+				auto_get_packet_size = atoi(optarg);
+				break;
 			case '?':
 				printf("Unknown option: %c\n",(char)optopt);
+				break;
+			default :
+				printf("输入的非法\n");
 				break;
 		}
 
@@ -1173,26 +1280,7 @@ int main(int argc, char *argv[])
 	else if(is_autogetpacke == 1)
 	{
 
-		char errbuf[PCAP_ERRBUF_SIZE]={0};
-		if( NULL==(source_pcap_fragment=pcap_open_offline("./autogetpacket.pcap", errbuf)) )
-		{
-			printf("pcap_open_offline() return NULL.\nerrbuf:%s\n", errbuf);
-			return 1;
-		}
-		//打开保存的pcap文件	
-		if( NULL==(pdumper_fragment=pcap_dump_open(source_pcap_fragment,writefile)) )
-		{
-			printf("pcap_dump_open() fail.\n");
-			pcap_close(source_pcap_fragment);
-			return 1;
-		}
-		fragment_packet("./autogetpacket.pcap");
-
-		pcap_dump_flush(pdumper_fragment);
-		pcap_dump_close(pdumper_fragment);
-		pcap_close(source_pcap_fragment);
-
-
+		autogetpacket(network,writefile);
 	}
 	return 0;
 
